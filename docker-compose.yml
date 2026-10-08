@@ -82,7 +82,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2025-06-13T11-33-47Z
+    image: quay.io/minio/minio:latest
     container_name: erumi-minio
     command: server /data --console-address ":9001"
     environment:
