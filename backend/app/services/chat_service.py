@@ -110,4 +110,5 @@ async def add_message(
     )
     session.add(message)
     chat.messages.append(message)
+    chat.updated_at = datetime.now(timezone.utc)
     return message
