@@ -1,0 +1,13 @@
+{
+  "name": "erumi-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Self-hosted AI Agent platform scaffold for Erumi.",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "test:backend": "python -m pytest backend/tests",
+    "docker:up": "docker compose up --build"
+  }
+}

@@ -1,0 +1,22 @@
+name: erumi-deploy-production
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build API image
+        run: docker build -t ghcr.io/ORG/erumi-api:${GITHUB_SHA} ./backend
+      - name: Build Web image
+        run: docker build -t ghcr.io/ORG/erumi-web:${GITHUB_SHA} ./frontend
+      - name: Deployment placeholder
+        run: echo "Push images and run docker compose pull/up on production host."
