@@ -109,4 +109,5 @@ async def add_message(
         completed_at=datetime.now(timezone.utc) if status == "completed" else None,
     )
     session.add(message)
+    chat.messages.append(message)
     return message
