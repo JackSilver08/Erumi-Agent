@@ -1,21 +1,23 @@
 import {
-  CalendarDays,
+  Calendar,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  FileText,
   Folder,
+  Image as ImageIcon,
   Loader2,
   Menu,
   MessageCircle,
-  MessageSquarePlus,
+  Paperclip,
   Plus,
   Send,
-  Settings,
   Square,
   UserCircle,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
 import { create } from 'zustand'
 
 import {
@@ -58,7 +60,7 @@ const useConversation = create<ConversationState>((set) => ({
 
 function titleForMessage(content: string) {
   const normalized = content.trim().replace(/\s+/g, ' ')
-  return normalized.length > 34 ? `${normalized.slice(0, 34)}…` : normalized
+  return normalized.length > 30 ? `${normalized.slice(0, 30)}…` : normalized
 }
 
 function App() {
@@ -72,20 +74,44 @@ function App() {
   } = useConversation()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    null,
-  )
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [activeModal, setActiveModal] = useState<'schedule' | 'library' | null>(null)
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const initializedRef = useRef(false)
-  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const attachmentRef = useRef<HTMLDivElement | null>(null)
 
   const canSubmit = input.trim().length > 0 && !isStreaming && !loading
+
+  // Close attachment dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        attachmentRef.current &&
+        !attachmentRef.current.contains(event.target as Node)
+      ) {
+        setShowAttachmentMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Auto scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages])
 
   async function selectConversation(id: string) {
     try {
@@ -111,7 +137,10 @@ function App() {
         })),
       )
       setMobileSidebarOpen(false)
-      window.requestAnimationFrame(() => inputRef.current?.focus())
+      window.requestAnimationFrame(() => {
+        if (inputRef.current) inputRef.current.focus()
+        if (textareaRef.current) textareaRef.current.focus()
+      })
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -168,7 +197,10 @@ function App() {
       setInput('')
       setError(null)
       setMobileSidebarOpen(false)
-      window.requestAnimationFrame(() => inputRef.current?.focus())
+      window.requestAnimationFrame(() => {
+        if (inputRef.current) inputRef.current.focus()
+        if (textareaRef.current) textareaRef.current.focus()
+      })
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -178,8 +210,8 @@ function App() {
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
+    if (event) event.preventDefault()
 
     const prompt = input.trim()
     if (!prompt || isStreaming || !activeConversationId) return
@@ -210,6 +242,7 @@ function App() {
     )
 
     setInput('')
+    setShowAttachmentMenu(false)
     setStreaming(true)
     setError(null)
 
@@ -296,336 +329,618 @@ function App() {
     }
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSubmit()
+    }
+  }
+
   function stopStreaming() {
     abortRef.current?.abort()
     abortRef.current = null
     setStreaming(false)
   }
 
-  function SidebarContent() {
-    return (
-      <div className="flex h-full flex-col overflow-hidden bg-[#2168a6] text-white">
-        <div className="border-b border-white/20 px-5 pb-5 pt-6">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((value) => !value)}
-              className="sidebar-collapse-button"
-              aria-label={sidebarCollapsed ? 'Mở thanh bên' : 'Thu gọn thanh bên'}
-            >
-              {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            </button>
+  const emptyState = messages.length === 0 && !loading
 
-            {!sidebarCollapsed && (
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-white text-[#3f3f3f]">
+      {/* Mobile Backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/40 lg:hidden transition-opacity duration-200 ${
+          mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        onClick={() => setMobileSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* ========================================================
+          SIDEBAR: Khớp chính xác với hình 1.png và 2.png
+          ======================================================== */}
+      <aside
+        className={`relative z-50 flex flex-col h-full bg-[#145da0] text-white transition-all duration-300 select-none shadow-xl lg:shadow-none ${
+          mobileSidebarOpen
+            ? 'fixed inset-y-0 left-0 w-[275px] translate-x-0'
+            : 'fixed inset-y-0 left-0 -translate-x-full lg:static lg:translate-x-0'
+        } ${sidebarCollapsed ? 'lg:w-[70px]' : 'lg:w-[275px]'}`}
+      >
+        {/* Toggle tab on right edge (nút mũi tên ở mép sidebar) */}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          className="sidebar-toggle-tab hidden lg:flex"
+          title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+          aria-label={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight size={13} strokeWidth={2.8} />
+          ) : (
+            <ChevronLeft size={13} strokeWidth={2.8} />
+          )}
+        </button>
+
+        {/* Top Header & Brand */}
+        <div className="flex flex-col pt-6 pb-2">
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center justify-center gap-4 mb-2">
+              <span className="text-2xl font-black italic tracking-wider">E</span>
+            </div>
+          ) : (
+            <div className="px-7 mb-4 flex items-center justify-between">
+              <h1 className="erumi-brand-title">ERUMI</h1>
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
-                aria-label="Đóng"
+                className="lg:hidden text-white/80 hover:text-white p-1"
+                aria-label="Đóng thanh bên"
               >
-                <X size={18} />
+                <X size={22} />
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          {!sidebarCollapsed && (
-            <div className="mt-4">
-              <div className="erumi-wordmark">ERUMI</div>
+          {/* Navigation Items */}
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center gap-3 px-2">
+              <button
+                type="button"
+                onClick={() => void handleNewChat()}
+                className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all"
+                title="Đoạn chat mới"
+              >
+                <Plus size={22} strokeWidth={2.4} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModal('schedule')}
+                className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/15 text-white transition-all"
+                title="Lịch trình"
+              >
+                <Clock size={20} strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModal('library')}
+                className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/15 text-white transition-all"
+                title="Thư viện"
+              >
+                <Folder size={20} strokeWidth={2.2} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 px-5">
+              <button
+                type="button"
+                onClick={() => void handleNewChat()}
+                className="sidebar-menu-btn"
+              >
+                <Plus size={22} strokeWidth={2.4} />
+                <span>Đoạn chat mới</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModal('schedule')}
+                className="sidebar-menu-btn"
+              >
+                <Clock size={21} strokeWidth={2.2} />
+                <span>Lịch trình</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModal('library')}
+                className="sidebar-menu-btn"
+              >
+                <Folder size={21} strokeWidth={2.2} />
+                <span>Thư viện</span>
+              </button>
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-hidden px-4 pt-4">
-          {sidebarCollapsed ? (
-            <div className="flex flex-col items-center gap-3">
-              <button
-                type="button"
-                onClick={() => void handleNewChat()}
-                className="sidebar-icon-button"
-                title="Đoạn chat mới"
-              >
-                <Plus size={22} />
-              </button>
-              <button
-                type="button"
-                className="sidebar-icon-button"
-                title="Lịch trình"
-              >
-                <CalendarDays size={21} />
-              </button>
-              <button
-                type="button"
-                className="sidebar-icon-button"
-                title="Thư viện"
-              >
-                <Folder size={21} />
-              </button>
-            </div>
-          ) : (
+        {/* Solid Divider */}
+        {!sidebarCollapsed && <div className="border-t border-white/70 mx-6 my-3" />}
+
+        {/* Middle Section: Recent Chats inside Dashed Box */}
+        <div className="flex-1 flex flex-col min-h-0 px-5 overflow-hidden">
+          {!sidebarCollapsed ? (
             <>
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => void handleNewChat()}
-                  className="sidebar-nav-button"
-                >
-                  <Plus size={24} />
-                  <span>Đoạn chat mới</span>
-                </button>
-
-                <button type="button" className="sidebar-nav-button">
-                  <CalendarDays size={23} />
-                  <span>Lịch trình</span>
-                </button>
-
-                <button type="button" className="sidebar-nav-button">
-                  <Folder size={23} />
-                  <span>Thư viện</span>
-                </button>
+              <div className="mb-2 px-2 text-[14px] italic text-white/95 font-normal">
+                Gần đây
               </div>
-
-              <div className="my-5 border-t border-white/75" />
-
-              <div className="mb-2 text-sm italic text-white/85">Gần đây</div>
-
-              <div className="sidebar-history">
+              <div className="sidebar-history-container flex-1 min-h-[220px] flex flex-col overflow-hidden mb-2">
                 {conversations.length === 0 ? (
-                  <div className="flex h-full items-center justify-center px-5 text-center text-sm text-white/80">
+                  <div className="flex-1 flex items-center justify-center text-white/90 text-[15px] select-none text-center px-2">
                     Lịch sử chat
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="flex-1 overflow-y-auto space-y-1 pr-1">
                     {conversations.map((conversation) => {
                       const active = conversation.id === activeConversationId
-
                       return (
-                        <button
+                        <div
                           key={conversation.id}
-                          type="button"
+                          className={`sidebar-history-item ${active ? 'active' : ''}`}
                           onClick={() => void selectConversation(conversation.id)}
-                          className={
-                            active
-                              ? 'sidebar-history-item sidebar-history-item-active'
-                              : 'sidebar-history-item'
-                          }
                         >
-                          <MessageCircle size={17} />
-                          <span>{conversation.title}</span>
-                        </button>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <MessageCircle size={16} className="shrink-0 opacity-80" />
+                            <span className="truncate">
+                              {conversation.title || 'Đoạn chat mới'}
+                            </span>
+                          </div>
+                        </div>
                       )
                     })}
                   </div>
                 )}
               </div>
             </>
-          )}
-        </div>
-
-        <div className="border-t border-white/75 p-4">
-          {sidebarCollapsed ? (
-            <button
-              type="button"
-              className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#2168a6]"
-              title="Tài khoản"
-            >
-              <UserCircle size={30} />
-            </button>
           ) : (
-            <div className="flex items-center gap-3 px-2 py-1">
-              <UserCircle size={39} strokeWidth={1.6} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">Username</p>
-                <p className="text-xs text-white/70">Tài khoản</p>
-              </div>
-              <Settings size={19} className="text-white/70" />
+            <div className="flex-1 flex flex-col items-center justify-center opacity-70">
+              <MessageCircle size={22} />
             </div>
           )}
         </div>
-      </div>
-    )
-  }
 
-  const emptyState = messages.length === 0 && !loading
+        {/* Solid Divider */}
+        {!sidebarCollapsed && <div className="border-t border-white/70 mx-6 my-3" />}
 
-  return (
-    <main className="min-h-screen bg-white text-[#3e4045]">
-      <div className="flex min-h-screen">
-        <div
-          className={`fixed inset-0 z-40 bg-black/35 lg:hidden ${
-            mobileSidebarOpen
-              ? 'opacity-100'
-              : 'pointer-events-none opacity-0'
-          }`}
-          onClick={() => setMobileSidebarOpen(false)}
-          aria-hidden="true"
-        />
-
-        <aside
-          className={`fixed inset-y-0 left-0 z-50 w-[300px] shrink-0 shadow-[6px_0_20px_rgba(18,77,129,0.08)] transition-transform duration-200 lg:static lg:translate-x-0 ${
-            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-          } ${
-            sidebarCollapsed ? 'lg:w-[88px]' : 'lg:w-[300px]'
-          }`}
-        >
-          <SidebarContent />
-        </aside>
-
-        <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="absolute left-0 right-0 top-0 z-10 flex h-16 items-center justify-between px-4 lg:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(true)}
-              className="rounded-xl bg-[#2168a6] p-2.5 text-white shadow-sm"
-              aria-label="Mở thanh bên"
+        {/* Bottom User Profile */}
+        <div className="p-4 pt-2">
+          {sidebarCollapsed ? (
+            <div
+              className="flex justify-center text-white cursor-pointer hover:opacity-90 transition-opacity"
+              title="Username"
             >
-              <Menu size={20} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void handleNewChat()}
-              className="rounded-xl bg-[#2168a6] p-2.5 text-white shadow-sm"
-              aria-label="Đoạn chat mới"
-            >
-              <MessageSquarePlus size={18} />
-            </button>
-          </header>
-
-          {error && (
-            <div className="absolute left-1/2 top-4 z-30 w-[min(680px,calc(100%-32px))] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-              {error}
+              <UserCircle size={32} strokeWidth={1.8} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-2 text-white">
+              <UserCircle size={36} strokeWidth={1.8} className="shrink-0" />
+              <span className="text-[17px] font-medium tracking-wide">Username</span>
             </div>
           )}
+        </div>
+      </aside>
 
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div
-                className={`mx-auto flex min-h-full w-full max-w-[1200px] flex-col px-5 pb-36 pt-20 sm:px-8 lg:px-12 ${
-                  emptyState ? 'justify-center' : ''
-                }`}
-              >
-                {loading ? (
-                  <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">
-                    <Loader2 className="mr-2 animate-spin" size={18} />
-                    Erumi đang khởi động…
-                  </div>
-                ) : emptyState ? (
-                  <div className="flex flex-col items-center justify-center pb-6">
-                    <img
-                      src="/erumi-chatbot.png"
-                      alt="Erumi"
-                      className="mb-8 h-[92px] w-[92px] object-contain sm:h-[108px] sm:w-[108px]"
-                    />
+      {/* MAIN CONTENT AREA */}
+      <main className="relative flex flex-1 flex-col h-full min-w-0 bg-white overflow-hidden">
+        {/* Mobile Header */}
+        <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="p-2 rounded-lg bg-[#145da0] text-white"
+            aria-label="Mở menu"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="text-xl font-black italic text-[#145da0]">ERUMI</div>
+          <button
+            type="button"
+            onClick={() => void handleNewChat()}
+            className="p-2 rounded-lg bg-[#145da0] text-white"
+            aria-label="Đoạn chat mới"
+          >
+            <Plus size={20} />
+          </button>
+        </header>
 
-                    <h1 className="text-center text-[30px] font-extrabold tracking-[-0.025em] text-[#404145] sm:text-[44px]">
-                      ERUMI CÓ THỂ GIÚP GÌ CHO BẠN?
-                    </h1>
+        {/* Floating Error Alert */}
+        {error && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 max-w-lg w-[90%] bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm shadow-md flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="text-red-500 hover:text-red-700 p-1"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
-                    <p className="mt-3 max-w-2xl text-center text-sm text-slate-500 sm:text-base">
-                      Hỏi Erumi bất cứ điều gì. Bạn có thể trò chuyện, nghiên cứu hoặc
-                      nhờ Erumi cùng bạn hoàn thành một việc nào đó.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mx-auto w-full max-w-5xl space-y-8 pt-2 sm:space-y-10">
-                    {messages.map((message) => (
-                      <article
-                        key={message.id}
-                        className={message.role === 'user' ? 'flex justify-end' : 'flex gap-3'}
-                      >
-                        {message.role !== 'user' && (
+        {/* CONTENT SWITCH: EMPTY STATE (1.png) vs ACTIVE CHAT (2.png) */}
+        {loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="animate-spin text-[#145da0]" size={28} />
+            <span className="text-sm">Erumi đang khởi động…</span>
+          </div>
+        ) : emptyState ? (
+          /* ========================================================
+             EMPTY STATE / TRANG CHỦ (Khớp 100% với phác thảo 1.png)
+             ======================================================== */
+          <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16">
+            {/* Mascot Robot */}
+            <img
+              src="/erumi-chatbot.png"
+              alt="ERUMI Mascot"
+              className="w-[125px] h-[125px] object-contain select-none mb-4 drop-shadow-sm transition-transform hover:scale-105 duration-200"
+            />
+
+            {/* Heading: ERUMI CÓ THỂ GIÚP GÌ CHO BẠN ? */}
+            <h2 className="text-center font-extrabold text-[24px] sm:text-[32px] md:text-[38px] text-[#3f3f3f] tracking-tight uppercase max-w-3xl px-4 select-none mb-8">
+              ERUMI CÓ THỂ GIÚP GÌ CHO BẠN ?
+            </h2>
+
+            {/* Centered Pill Search / Input Bar (Khớp 1.png) */}
+            <div className="w-full max-w-[620px] px-2 relative" ref={attachmentRef}>
+              <form onSubmit={handleSubmit} className="w-full">
+                <div className="erumi-pill-input">
+                  {/* Left '+' button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAttachmentMenu((v) => !v)}
+                    className="pill-action-btn"
+                    title="Thêm tùy chọn"
+                  >
+                    <Plus size={26} strokeWidth={2.4} />
+                  </button>
+
+                  {/* Input field */}
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Hỏi Erumi"
+                    className="flex-1 bg-transparent border-0 outline-none text-white text-[17px] font-medium placeholder:text-white/80 px-3 py-2"
+                  />
+
+                  {/* Right Send icon button */}
+                  <button
+                    type="submit"
+                    disabled={!canSubmit}
+                    className="pill-action-btn"
+                    title="Gửi tin nhắn"
+                  >
+                    <Send size={22} strokeWidth={2} />
+                  </button>
+                </div>
+              </form>
+
+              {/* Attachment Popup Menu */}
+              {showAttachmentMenu && (
+                <div className="absolute left-6 -top-36 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 w-56 text-[#373A3C] z-30 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInput((prev) => `${prev} [Tài liệu đính kèm] `)
+                      setShowAttachmentMenu(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    <Paperclip size={18} className="text-[#145da0]" />
+                    <span>Đính kèm tệp tin</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInput((prev) => `${prev} [Hình ảnh] `)
+                      setShowAttachmentMenu(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    <ImageIcon size={18} className="text-[#145da0]" />
+                    <span>Tải ảnh lên</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveModal('schedule')
+                      setShowAttachmentMenu(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    <Calendar size={18} className="text-[#145da0]" />
+                    <span>Lập lịch trình</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* ========================================================
+             ACTIVE CHAT STATE (Khớp 100% với phác thảo 2.png)
+             ======================================================== */
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Scrollable Message List */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-16 pt-8 pb-32">
+              <div className="max-w-4xl mx-auto space-y-7">
+                {messages.map((message) => {
+                  const isUser = message.role === 'user'
+                  return (
+                    <div
+                      key={message.id}
+                      className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                    >
+                      {isUser ? (
+                        /* USER SPEECH BUBBLE WITH CURVED RIGHT TAIL (Khớp 2.png) */
+                        <div className="relative max-w-[80%] sm:max-w-[70%]">
+                          <div className="speech-bubble-user">
+                            <p className="whitespace-pre-wrap">{message.content}</p>
+                          </div>
+                          {/* Curved tail pointing downwards-right matching 2.png */}
+                          <svg
+                            className="absolute -bottom-2 right-2 w-[18px] h-[15px] text-[#004aad] fill-current pointer-events-none"
+                            viewBox="0 0 18 15"
+                          >
+                            <path d="M0 0 C6 1 12 5 18 15 C15 10 11 5 6 0 Z" />
+                          </svg>
+                        </div>
+                      ) : (
+                        /* ASSISTANT SPEECH BUBBLE WITH CURVED LEFT TAIL + MASCOT (Khớp 2.png) */
+                        <div className="flex items-start gap-3 max-w-[85%] sm:max-w-[75%]">
                           <img
                             src="/erumi-chatbot.png"
-                            alt=""
-                            className="mt-1 h-10 w-10 shrink-0 object-contain"
+                            alt="ERUMI"
+                            className="w-10 h-10 object-contain shrink-0 mt-1 select-none"
                           />
-                        )}
-
-                        <div
-                          className={
-                            message.role === 'user'
-                              ? 'chat-bubble chat-bubble-user'
-                              : message.status === 'failed'
-                                ? 'chat-bubble chat-bubble-error'
-                                : 'chat-bubble chat-bubble-assistant'
-                          }
-                        >
-                          <p className="whitespace-pre-wrap leading-7">
-                            {message.content ||
-                              (message.status === 'streaming' ? 'Erumi đang suy nghĩ…' : '')}
-                          </p>
-
-                          {message.status === 'streaming' && (
-                            <span className="mt-2 inline-flex items-center gap-2 text-xs text-white/80">
-                              <Loader2 className="animate-spin" size={12} />
-                              Đang trả lời
-                            </span>
-                          )}
+                          <div className="relative flex-1">
+                            <div className="speech-bubble-assistant">
+                              <p className="whitespace-pre-wrap">
+                                {message.content ||
+                                  (message.status === 'streaming'
+                                    ? 'Erumi đang suy nghĩ…'
+                                    : '')}
+                              </p>
+                              {message.status === 'streaming' && (
+                                <div className="mt-2 flex items-center gap-1.5 text-xs text-white/80">
+                                  <Loader2 size={12} className="animate-spin" />
+                                  <span>Đang phản hồi...</span>
+                                </div>
+                              )}
+                            </div>
+                            {/* Curved tail pointing downwards-left toward mascot matching 2.png */}
+                            <svg
+                              className="absolute -bottom-2 left-2 w-[18px] h-[15px] text-[#004aad] fill-current pointer-events-none"
+                              viewBox="0 0 18 15"
+                            >
+                              <path d="M18 0 C12 1 6 5 0 15 C3 10 7 5 12 0 Z" />
+                            </svg>
+                          </div>
                         </div>
-                      </article>
-                    ))}
+                      )}
+                    </div>
+                  )
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            {/* Pinned Bottom Input Bar (Khớp 2.png) */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-transparent pt-6 pb-6 px-4 flex justify-center">
+              <div className="w-full max-w-3xl relative" ref={attachmentRef}>
+                <form onSubmit={handleSubmit} className="w-full">
+                  <div className="erumi-pill-input">
+                    {/* Left '+' button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowAttachmentMenu((v) => !v)}
+                      className="pill-action-btn"
+                      title="Thêm tùy chọn"
+                    >
+                      <Plus size={26} strokeWidth={2.4} />
+                    </button>
+
+                    {/* Auto-growing Textarea or Input */}
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      rows={1}
+                      placeholder="Hỏi Erumi"
+                      className="flex-1 bg-transparent border-0 outline-none text-white text-[17px] font-medium placeholder:text-white/80 px-3 py-2 resize-none max-h-32"
+                    />
+
+                    {/* Right Action Button (Send or Stop) */}
+                    {isStreaming ? (
+                      <button
+                        type="button"
+                        onClick={stopStreaming}
+                        className="pill-action-btn"
+                        title="Dừng"
+                      >
+                        <Square size={20} fill="currentColor" />
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={!canSubmit}
+                        className="pill-action-btn"
+                        title="Gửi"
+                      >
+                        <Send size={22} strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                {/* Attachment Menu in Chat View */}
+                {showAttachmentMenu && (
+                  <div className="absolute left-6 -top-36 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 w-56 text-[#373A3C] z-30 animate-fade-in">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput((prev) => `${prev} [Tài liệu đính kèm] `)
+                        setShowAttachmentMenu(false)
+                      }}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                      <Paperclip size={18} className="text-[#145da0]" />
+                      <span>Đính kèm tệp tin</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput((prev) => `${prev} [Hình ảnh] `)
+                        setShowAttachmentMenu(false)
+                      }}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                      <ImageIcon size={18} className="text-[#145da0]" />
+                      <span>Tải ảnh lên</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveModal('schedule')
+                        setShowAttachmentMenu(false)
+                      }}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                    >
+                      <Calendar size={18} className="text-[#145da0]" />
+                      <span>Lập lịch trình</span>
+                    </button>
                   </div>
                 )}
               </div>
             </div>
+          </div>
+        )}
+      </main>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-5 pt-12 sm:px-8 lg:px-12">
-              <form onSubmit={handleSubmit} className="mx-auto max-w-5xl">
-                <div className="chat-composer">
-                  <button
-                    type="button"
-                    className="composer-icon-button"
-                    title="Thêm tệp"
-                  >
-                    <Plus size={30} strokeWidth={2.1} />
-                  </button>
-
-                  <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault()
-                        event.currentTarget.form?.requestSubmit()
-                      }
-                    }}
-                    rows={1}
-                    disabled={loading || !activeConversationId}
-                    placeholder="Hỏi Erumi"
-                    className="composer-input"
-                  />
-
-                  {isStreaming ? (
-                    <button
-                      type="button"
-                      onClick={stopStreaming}
-                      className="composer-send-button"
-                      title="Dừng"
-                    >
-                      <Square size={20} fill="currentColor" />
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={!canSubmit}
-                      className="composer-send-button disabled:cursor-not-allowed disabled:opacity-55"
-                      title="Gửi"
-                    >
-                      <Send size={26} strokeWidth={1.7} />
-                    </button>
-                  )}
+      {/* ========================================================
+          MODAL: LỊCH TRÌNH (SCHEDULE)
+          ======================================================== */}
+      {activeModal === 'schedule' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl p-6 border border-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-[#145da0]/10 text-[#145da0] flex items-center justify-center">
+                  <Clock size={22} />
                 </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">Lịch trình Erumi</h3>
+                  <p className="text-xs text-slate-500">Tác vụ tự động & Nhắc nhở</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-                <p className="mt-2 text-center text-[11px] text-slate-400">
-                  Enter để gửi · Shift + Enter để xuống dòng
-                </p>
-              </form>
+            <div className="py-6 space-y-3">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-800">Báo cáo hàng ngày</h4>
+                  <p className="text-xs text-slate-500">Mỗi ngày lúc 08:00 sáng</p>
+                </div>
+                <span className="text-xs bg-[#145da0]/15 text-[#145da0] font-semibold px-2.5 py-1 rounded-full">
+                  Đang bật
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-800">Cập nhật tin tức & tóm tắt</h4>
+                  <p className="text-xs text-slate-500">Thứ 2 & Thứ 6 lúc 17:00</p>
+                </div>
+                <span className="text-xs bg-[#145da0]/15 text-[#145da0] font-semibold px-2.5 py-1 rounded-full">
+                  Đang bật
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-5 py-2.5 rounded-xl bg-[#145da0] text-white text-sm font-semibold hover:bg-[#10528e] transition-colors"
+              >
+                Đóng
+              </button>
             </div>
           </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: THƯ VIỆN (LIBRARY)
+          ======================================================== */}
+      {activeModal === 'library' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl p-6 border border-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-[#145da0]/10 text-[#145da0] flex items-center justify-center">
+                  <Folder size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">Thư viện của bạn</h3>
+                  <p className="text-xs text-slate-500">Tài liệu, dữ liệu và mẫu câu hỏi</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="py-6 space-y-3">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <FileText size={20} className="text-[#145da0] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-semibold text-slate-800 truncate">
+                    Erumi_Agent_Project_Plan.docx
+                  </h4>
+                  <p className="text-xs text-slate-500">Kế hoạch dự án và tài liệu tham khảo</p>
+                </div>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <FileText size={20} className="text-[#145da0] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-semibold text-slate-800 truncate">
+                    Hướng dẫn sử dụng Erumi AI
+                  </h4>
+                  <p className="text-xs text-slate-500">Tài liệu hướng dẫn mẫu</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-5 py-2.5 rounded-xl bg-[#145da0] text-white text-sm font-semibold hover:bg-[#10528e] transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
