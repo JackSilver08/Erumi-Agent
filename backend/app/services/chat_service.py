@@ -51,6 +51,7 @@ async def create_chat(
         status="active",
         metadata_json={},
     )
+    chat.messages = []
     session.add(chat)
     await session.flush()
     return chat
@@ -109,6 +110,34 @@ async def add_message(
         completed_at=datetime.now(timezone.utc) if status == "completed" else None,
     )
     session.add(message)
-    chat.messages.append(message)
+    if "messages" in chat.__dict__ and isinstance(chat.__dict__["messages"], list):
+        chat.messages.append(message)
     chat.updated_at = datetime.now(timezone.utc)
     return message
+
+
+async def delete_chat(
+    session: AsyncSession,
+    user: User,
+    chat_id: uuid.UUID,
+) -> None:
+    chat = await get_chat(session, user, chat_id)
+    # Delete associated messages
+    for msg in list(chat.messages):
+        await session.delete(msg)
+    await session.delete(chat)
+    await session.commit()
+
+
+async def update_chat_title(
+    session: AsyncSession,
+    user: User,
+    chat_id: uuid.UUID,
+    title: str,
+) -> Chat:
+    chat = await get_chat(session, user, chat_id)
+    chat.title = title.strip() or "New chat"
+    chat.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    return chat
+

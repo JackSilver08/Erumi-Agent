@@ -1,13 +1,16 @@
+from datetime import datetime, timezone
 import json
 import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_session
 from app.dependencies import get_current_user, get_db
-from app.models import User
+from app.models import Message, User
 from app.schemas.chat import ChatCompletionRequest
 from app.services.chat_service import add_message, create_chat, get_chat, make_title
 from app.services.model_router import stream_chat_response
@@ -53,10 +56,27 @@ async def prepare_chat(
     return chat
 
 
-def model_messages(chat) -> list[dict[str, str]]:
+async def get_model_messages(
+    session: AsyncSession,
+    chat_id: uuid.UUID,
+    payload: ChatCompletionRequest,
+) -> list[dict[str, str]]:
+    stmt = (
+        select(Message)
+        .where(Message.chat_id == chat_id)
+        .order_by(Message.created_at.asc())
+    )
+    result = await session.scalars(stmt)
+    db_messages = list(result.all())
+    if db_messages:
+        return [
+            {"role": message.role, "content": message.content}
+            for message in db_messages
+            if message.role in {"system", "user", "assistant"}
+        ]
     return [
         {"role": message.role, "content": message.content}
-        for message in chat.messages
+        for message in payload.messages
         if message.role in {"system", "user", "assistant"}
     ]
 
@@ -68,7 +88,8 @@ async def completions(
     session: AsyncSession = Depends(get_db),
 ):
     chat = await prepare_chat(payload, user, session)
-    messages = model_messages(chat)
+    chat_id = chat.id
+    messages = await get_model_messages(session, chat_id, payload)
     await session.commit()
 
     if not payload.stream:
@@ -79,21 +100,24 @@ async def completions(
             )
         ]
         answer = "".join(chunks)
-        await add_message(
-            session,
-            chat,
+        assistant_message = Message(
+            id=uuid.uuid4(),
+            chat_id=chat_id,
             role="assistant",
             content=answer,
             status="completed",
             model_id=payload.model,
+            metadata_json={},
+            completed_at=datetime.now(timezone.utc),
         )
+        session.add(assistant_message)
         await session.commit()
         return JSONResponse(
             {
                 "type": "message",
                 "content": answer,
                 "model": payload.model,
-                "conversation_id": str(chat.id),
+                "conversation_id": str(chat_id),
             }
         )
 
@@ -104,7 +128,7 @@ async def completions(
                 {
                     "type": "metadata",
                     "model": payload.model,
-                    "conversation_id": str(chat.id),
+                    "conversation_id": str(chat_id),
                 }
             )
             async for token in stream_chat_response(
@@ -114,18 +138,24 @@ async def completions(
                 answer += token
                 yield sse_event({"type": "token", "content": token})
 
-            await add_message(
-                session,
-                chat,
-                role="assistant",
-                content=answer,
-                status="completed",
-                model_id=payload.model,
-            )
-            await session.commit()
+            # Save assistant message using a clean dedicated session
+            async for sess in get_session():
+                msg = Message(
+                    id=uuid.uuid4(),
+                    chat_id=chat_id,
+                    role="assistant",
+                    content=answer,
+                    status="completed",
+                    model_id=payload.model,
+                    metadata_json={},
+                    completed_at=datetime.now(timezone.utc),
+                )
+                sess.add(msg)
+                await sess.commit()
+                break
+
             yield sse_event({"type": "done"})
         except Exception as exc:
-            await session.rollback()
             yield sse_event(
                 {
                     "type": "error",

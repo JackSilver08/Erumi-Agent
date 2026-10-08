@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.realtime.router import router as realtime_router
-from app.routers import agents, auth, chat, conversations, files, health, models
+from app.routers import agents, auth, chat, conversations, files, health, models, schedules
 
 
 def create_app() -> FastAPI:
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
         tags=["conversations"],
     )
     app.include_router(files.router, prefix="/api/v1/files", tags=["files"])
+    app.include_router(schedules.router, prefix="/api/v1/schedules", tags=["schedules"])
     app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
     app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
     app.include_router(realtime_router)

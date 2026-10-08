@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     dev_auth_bypass: bool = True
     default_model: str = "erumi-auto"
-    mock_model: bool = True
+    mock_model: bool = False
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:4b"
+    ollama_model: str = "qwen2.5:1.5b"
     ollama_timeout_seconds: float = 300.0
 
     @property
