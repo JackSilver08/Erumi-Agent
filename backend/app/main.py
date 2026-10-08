@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.realtime.router import router as realtime_router
 from app.routers import agents, auth, chat, files, health, models
 
 
@@ -26,6 +27,8 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix="/api/v1/files", tags=["files"])
     app.include_router(models.router, prefix="/api/v1/models", tags=["models"])
     app.include_router(agents.router, prefix="/api/v1", tags=["agents"])
+    app.include_router(realtime_router)
+
     return app
 
 
