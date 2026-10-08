@@ -3,7 +3,8 @@ services:
     build: ./frontend
     container_name: erumi-web
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -12,13 +13,28 @@ services:
     build: ./backend
     container_name: erumi-api
     env_file: .env
+    environment:
+      ERUMI_DATABASE_URL: postgresql+asyncpg://erumi:erumi@postgres:5432/erumi
+      ERUMI_REDIS_URL: redis://redis:6379/0
+      ERUMI_OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      ERUMI_OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
+      ollama:
+        condition: service_started
     ports:
       - "8000:8000"
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   worker:
@@ -26,6 +42,10 @@ services:
     container_name: erumi-worker
     command: python -m app.worker
     env_file: .env
+    environment:
+      ERUMI_DATABASE_URL: postgresql+asyncpg://erumi:erumi@postgres:5432/erumi
+      ERUMI_REDIS_URL: redis://redis:6379/0
+      ERUMI_OBJECT_STORAGE_ENDPOINT: http://minio:9000
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +68,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U erumi -d erumi"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7.4-alpine
@@ -59,10 +79,10 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2026-01-01T00-00-00Z
+    image: minio/minio:RELEASE.2025-06-13T11-33-47Z
     container_name: erumi-minio
     command: server /data --console-address ":9001"
     environment:
@@ -74,6 +94,16 @@ services:
       - "9000:9000"
       - "9001:9001"
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: erumi-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   pgdata:
   minio_data:
+  ollama_data:
