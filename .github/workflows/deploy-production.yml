@@ -3,20 +3,58 @@ name: erumi-deploy-production
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: production
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v6
-      - name: Build API image
-        run: docker build -t ghcr.io/ORG/erumi-api:${GITHUB_SHA} ./backend
-      - name: Build Web image
-        run: docker build -t ghcr.io/ORG/erumi-web:${GITHUB_SHA} ./frontend
-      - name: Deployment placeholder
-        run: echo "Push images and run docker compose pull/up on production host."
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          docker build -t ghcr.io/$owner_lc/erumi-api:${GITHUB_SHA} ./backend
+          docker push ghcr.io/$owner_lc/erumi-api:${GITHUB_SHA}
+
+      - name: Build and push Web
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          docker build -t ghcr.io/$owner_lc/erumi-web:${GITHUB_SHA} ./frontend
+          docker push ghcr.io/$owner_lc/erumi-web:${GITHUB_SHA}
+
+      - name: Deploy to production (optional)
+        if: ${{ vars.ERUMI_PRODUCTION_DEPLOY_ENABLED == 'true' }}
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/erumi
+            export ERUMI_VERSION=${GITHUB_SHA}
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml exec -T api alembic upgrade head
+            curl -fsS http://127.0.0.1:8000/health/ready
+            docker image prune -f
