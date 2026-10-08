@@ -1,6 +1,9 @@
 import {
   Archive,
-  Bot,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
   Loader2,
   Menu,
   MessageCircle,
@@ -9,8 +12,8 @@ import {
   Search,
   Send,
   Settings,
-  Sparkles,
   Square,
+  UserCircle,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -57,14 +60,8 @@ const useConversation = create<ConversationState>((set) => ({
 
 function titleForMessage(content: string) {
   const normalized = content.trim().replace(/\s+/g, ' ')
-  return normalized.length > 42 ? `${normalized.slice(0, 42)}…` : normalized
+  return normalized.length > 34 ? `${normalized.slice(0, 34)}…` : normalized
 }
-
-const starterPrompts = [
-  'Explain a difficult concept in simple terms',
-  'Research something on the web for me',
-  'Help me plan and complete a task',
-]
 
 function App() {
   const {
@@ -83,10 +80,12 @@ function App() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const initializedRef = useRef(false)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const canSubmit = input.trim().length > 0 && !isStreaming && !loading
 
@@ -114,11 +113,12 @@ function App() {
         })),
       )
       setMobileSidebarOpen(false)
+      window.requestAnimationFrame(() => inputRef.current?.focus())
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Unable to load this conversation.',
+          : 'Không thể mở đoạn chat này.',
       )
     }
   }
@@ -151,7 +151,7 @@ function App() {
         setError(
           requestError instanceof Error
             ? requestError.message
-            : 'Unable to start Erumi.',
+            : 'Không thể khởi động Erumi.',
         )
       } finally {
         setLoading(false)
@@ -167,19 +167,17 @@ function App() {
       setConversations((items) => [created, ...items])
       setActiveConversationId(created.id)
       setMessages([])
+      setInput('')
       setError(null)
       setMobileSidebarOpen(false)
+      window.requestAnimationFrame(() => inputRef.current?.focus())
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Unable to create a new chat.',
+          : 'Không thể tạo đoạn chat mới.',
       )
     }
-  }
-
-  function usePrompt(prompt: string) {
-    setInput(prompt)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -234,7 +232,7 @@ function App() {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error('Erumi could not connect to the chat service.')
+        throw new Error('Erumi không thể kết nối tới dịch vụ trò chuyện.')
       }
 
       const reader = response.body.getReader()
@@ -274,7 +272,7 @@ function App() {
           }
 
           if (payload.type === 'error') {
-            throw new Error(payload.message ?? 'Erumi could not generate a response.')
+            throw new Error(payload.message ?? 'Erumi không thể tạo câu trả lời.')
           }
 
           if (payload.type === 'done') {
@@ -289,7 +287,7 @@ function App() {
         const message =
           requestError instanceof Error
             ? requestError.message
-            : 'The model did not respond.'
+            : 'Erumi chưa thể phản hồi.'
 
         updateMessage(assistantId, message, 'failed')
         setError(message)
@@ -306,235 +304,286 @@ function App() {
     setStreaming(false)
   }
 
+  function SidebarContent() {
+    return (
+      <div className="flex h-full flex-col overflow-hidden bg-[#2168a6] text-white">
+        <div className="border-b border-white/20 px-5 pb-5 pt-6">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((value) => !value)}
+              className="sidebar-collapse-button"
+              aria-label={sidebarCollapsed ? 'Mở thanh bên' : 'Thu gọn thanh bên'}
+            >
+              {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+
+            {!sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+                aria-label="Đóng"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          {!sidebarCollapsed && (
+            <div className="mt-4">
+              <div className="erumi-wordmark">ERUMI</div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-hidden px-4 pt-4">
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleNewChat()}
+                className="sidebar-icon-button"
+                title="Đoạn chat mới"
+              >
+                <Plus size={22} />
+              </button>
+              <button
+                type="button"
+                className="sidebar-icon-button"
+                title="Lịch trình"
+              >
+                <CalendarDays size={21} />
+              </button>
+              <button
+                type="button"
+                className="sidebar-icon-button"
+                title="Thư viện"
+              >
+                <Folder size={21} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => void handleNewChat()}
+                  className="sidebar-nav-button"
+                >
+                  <Plus size={24} />
+                  <span>Đoạn chat mới</span>
+                </button>
+
+                <button type="button" className="sidebar-nav-button">
+                  <CalendarDays size={23} />
+                  <span>Lịch trình</span>
+                </button>
+
+                <button type="button" className="sidebar-nav-button">
+                  <Folder size={23} />
+                  <span>Thư viện</span>
+                </button>
+              </div>
+
+              <div className="my-5 border-t border-white/75" />
+
+              <div className="mb-2 text-sm italic text-white/85">Gần đây</div>
+
+              <div className="sidebar-history">
+                {conversations.length === 0 ? (
+                  <div className="flex h-full items-center justify-center px-5 text-center text-sm text-white/80">
+                    Lịch sử chat
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {conversations.map((conversation) => {
+                      const active = conversation.id === activeConversationId
+
+                      return (
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          onClick={() => void selectConversation(conversation.id)}
+                          className={
+                            active
+                              ? 'sidebar-history-item sidebar-history-item-active'
+                              : 'sidebar-history-item'
+                          }
+                        >
+                          <MessageCircle size={17} />
+                          <span>{conversation.title}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-white/75 p-4">
+          {sidebarCollapsed ? (
+            <button
+              type="button"
+              className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#2168a6]"
+              title="Tài khoản"
+            >
+              <UserCircle size={30} />
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 px-2 py-1">
+              <UserCircle size={39} strokeWidth={1.6} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">Username</p>
+                <p className="text-xs text-white/70">Tài khoản</p>
+              </div>
+              <Settings size={19} className="text-white/70" />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const emptyState = messages.length === 0 && !loading
+
   return (
-    <main className="min-h-screen bg-[#07101f] text-white">
-      <div className="flex min-h-screen overflow-hidden">
+    <main className="min-h-screen bg-white text-[#3e4045]">
+      <div className="flex min-h-screen">
         <div
-          className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity lg:hidden ${
-            mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+          className={`fixed inset-0 z-40 bg-black/35 lg:hidden ${
+            mobileSidebarOpen
+              ? 'opacity-100'
+              : 'pointer-events-none opacity-0'
           }`}
           onClick={() => setMobileSidebarOpen(false)}
           aria-hidden="true"
         />
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col border-r border-white/8 bg-[#091426] transition-transform duration-200 lg:static lg:translate-x-0 ${
-            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          className={`fixed inset-y-0 left-0 z-50 w-[300px] shrink-0 shadow-[6px_0_20px_rgba(18,77,129,0.08)] transition-transform duration-200 lg:static lg:translate-x-0 ${
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          } ${
+            sidebarCollapsed ? 'lg:w-[88px]' : 'lg:w-[300px]'
           }`}
         >
-          <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <img
-                src="/erumi-chatbot.png"
-                alt="Erumi"
-                className="h-9 w-9 rounded-xl border border-white/10 object-cover shadow-[0_0_24px_rgba(45,128,255,0.16)]"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-tight">Erumi</p>
-                <p className="text-[11px] text-slate-400">Erudite Mind</p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(false)}
-              className="rounded-lg p-2 text-slate-400 transition hover:bg-white/6 hover:text-white lg:hidden"
-              aria-label="Close sidebar"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="p-4">
-            <button
-              type="button"
-              onClick={() => void handleNewChat()}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#2583ff] px-4 text-sm font-semibold text-white shadow-[0_8px_26px_rgba(37,131,255,0.22)] transition hover:bg-[#3a91ff]"
-            >
-              <MessageSquarePlus size={17} />
-              New chat
-            </button>
-          </div>
-
-          <div className="px-4">
-            <div className="flex h-10 items-center gap-2 rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-slate-400">
-              <Search size={16} />
-              <span>Search chats</span>
-            </div>
-          </div>
-
-          <div className="px-4 pb-2 pt-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Recent
-            </p>
-          </div>
-
-          <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-            <div className="space-y-1">
-              {conversations.map((item) => {
-                const active = item.id === activeConversationId
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => void selectConversation(item.id)}
-                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                      active
-                        ? 'bg-white/[0.08] text-white ring-1 ring-white/8'
-                        : 'text-slate-300 hover:bg-white/[0.04] hover:text-white'
-                    }`}
-                  >
-                    <MessageCircle
-                      size={16}
-                      className={active ? 'text-[#55a2ff]' : 'text-slate-500'}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {item.title}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </nav>
-
-          <div className="border-t border-white/8 p-3">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
-            >
-              <Archive size={16} />
-              Archived chats
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
-            >
-              <Settings size={16} />
-              Settings
-            </button>
-          </div>
+          <SidebarContent />
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col bg-[#07101f]">
-          <header className="flex h-16 items-center justify-between border-b border-white/8 px-4 md:px-6">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileSidebarOpen(true)}
-                className="rounded-lg p-2 text-slate-300 transition hover:bg-white/[0.05] hover:text-white lg:hidden"
-                aria-label="Open sidebar"
-              >
-                <Menu size={19} />
-              </button>
-
-              <div className="flex items-center gap-2.5">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#45d483] opacity-30" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#45d483]" />
-                </span>
-                <span className="text-sm font-medium text-slate-200">Erumi</span>
-                <span className="hidden text-xs text-slate-500 sm:inline">
-                  Your AI workspace
-                </span>
-              </div>
-            </div>
+        <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="absolute left-0 right-0 top-0 z-10 flex h-16 items-center justify-between px-4 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="rounded-xl bg-[#2168a6] p-2.5 text-white shadow-sm"
+              aria-label="Mở thanh bên"
+            >
+              <Menu size={20} />
+            </button>
 
             <button
               type="button"
               onClick={() => void handleNewChat()}
-              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-200 transition hover:bg-white/[0.07]"
+              className="rounded-xl bg-[#2168a6] p-2.5 text-white shadow-sm"
+              aria-label="Đoạn chat mới"
             >
-              <Plus size={16} />
-              <span className="hidden sm:inline">New chat</span>
+              <MessageSquarePlus size={18} />
             </button>
           </header>
 
           {error && (
-            <div className="border-b border-red-400/15 bg-red-500/[0.07] px-4 py-3 text-sm text-red-200 md:px-8">
+            <div className="absolute left-1/2 top-4 z-30 w-[min(680px,calc(100%-32px))] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
               {error}
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-            <div className="mx-auto flex min-h-full max-w-3xl flex-col">
-              {loading ? (
-                <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
-                  <Loader2 className="mr-2 animate-spin" size={17} />
-                  Starting Erumi…
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
-                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#2583ff]/20 bg-[#2583ff]/10 shadow-[0_0_48px_rgba(37,131,255,0.12)]">
-                    <Sparkles className="text-[#55a2ff]" size={28} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div
+                className={`mx-auto flex min-h-full w-full max-w-[1200px] flex-col px-5 pb-36 pt-20 sm:px-8 lg:px-12 ${
+                  emptyState ? 'justify-center' : ''
+                }`}
+              >
+                {loading ? (
+                  <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">
+                    <Loader2 className="mr-2 animate-spin" size={18} />
+                    Erumi đang khởi động…
                   </div>
+                ) : emptyState ? (
+                  <div className="flex flex-col items-center justify-center pb-6">
+                    <img
+                      src="/erumi-chatbot.png"
+                      alt="Erumi"
+                      className="mb-8 h-[92px] w-[92px] object-contain sm:h-[108px] sm:w-[108px]"
+                    />
 
-                  <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
-                    What can I help you with?
-                  </h1>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400 md:text-base">
-                    Ask a question, research a topic, work through a problem, or describe
-                    something you want done.
-                  </p>
+                    <h1 className="text-center text-[30px] font-extrabold tracking-[-0.025em] text-[#404145] sm:text-[44px]">
+                      ERUMI CÓ THỂ GIÚP GÌ CHO BẠN?
+                    </h1>
 
-                  <div className="mt-8 grid w-full gap-3 sm:grid-cols-3">
-                    {starterPrompts.map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => usePrompt(prompt)}
-                        className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-4 text-left text-sm leading-5 text-slate-300 transition hover:-translate-y-0.5 hover:border-[#2583ff]/40 hover:bg-[#2583ff]/[0.07] hover:text-white"
+                    <p className="mt-3 max-w-2xl text-center text-sm text-slate-500 sm:text-base">
+                      Hỏi Erumi bất cứ điều gì. Bạn có thể trò chuyện, nghiên cứu hoặc
+                      nhờ Erumi cùng bạn hoàn thành một việc nào đó.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mx-auto w-full max-w-5xl space-y-8 pt-2 sm:space-y-10">
+                    {messages.map((message) => (
+                      <article
+                        key={message.id}
+                        className={message.role === 'user' ? 'flex justify-end' : 'flex gap-3'}
                       >
-                        {prompt}
-                      </button>
+                        {message.role !== 'user' && (
+                          <img
+                            src="/erumi-chatbot.png"
+                            alt=""
+                            className="mt-1 h-10 w-10 shrink-0 object-contain"
+                          />
+                        )}
+
+                        <div
+                          className={
+                            message.role === 'user'
+                              ? 'chat-bubble chat-bubble-user'
+                              : message.status === 'failed'
+                                ? 'chat-bubble chat-bubble-error'
+                                : 'chat-bubble chat-bubble-assistant'
+                          }
+                        >
+                          <p className="whitespace-pre-wrap leading-7">
+                            {message.content ||
+                              (message.status === 'streaming' ? 'Erumi đang suy nghĩ…' : '')}
+                          </p>
+
+                          {message.status === 'streaming' && (
+                            <span className="mt-2 inline-flex items-center gap-2 text-xs text-white/80">
+                              <Loader2 className="animate-spin" size={12} />
+                              Đang trả lời
+                            </span>
+                          )}
+                        </div>
+                      </article>
                     ))}
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-7 pb-8">
-                  {messages.map((message) => (
-                    <article
-                      key={message.id}
-                      className={`flex gap-3 ${
-                        message.role === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {message.role !== 'user' && (
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#2583ff]/10 text-[#55a2ff]">
-                          <Bot size={17} />
-                        </div>
-                      )}
-
-                      <div
-                        className={`max-w-[min(760px,86%)] rounded-2xl px-4 py-3.5 text-sm leading-7 ${
-                          message.role === 'user'
-                            ? 'bg-[#2583ff] text-white shadow-[0_8px_28px_rgba(37,131,255,0.16)]'
-                            : message.status === 'failed'
-                              ? 'border border-red-400/15 bg-red-500/[0.07] text-red-100'
-                              : 'text-slate-200'
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-
-                        {message.status === 'streaming' && (
-                          <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500">
-                            <Loader2 className="animate-spin" size={12} />
-                            Thinking
-                          </span>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="px-4 pb-4 pt-2 md:px-8 md:pb-6">
-            <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
-              <div className="rounded-2xl border border-white/10 bg-[#0b1628] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.22)] focus-within:border-[#2583ff]/45 focus-within:shadow-[0_0_0_4px_rgba(37,131,255,0.08)]">
-                <div className="flex items-end gap-2">
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-5 pt-12 sm:px-8 lg:px-12">
+              <form onSubmit={handleSubmit} className="mx-auto max-w-5xl">
+                <div className="chat-composer">
+                  <button
+                    type="button"
+                    className="composer-icon-button"
+                    title="Thêm tệp"
+                  >
+                    <Plus size={30} strokeWidth={2.1} />
+                  </button>
+
                   <textarea
+                    ref={inputRef}
                     value={input}
                     onChange={(event) => setInput(event.target.value)}
                     onKeyDown={(event) => {
@@ -545,36 +594,36 @@ function App() {
                     }}
                     rows={1}
                     disabled={loading || !activeConversationId}
-                    placeholder="Message Erumi…"
-                    className="max-h-40 min-h-12 flex-1 resize-none bg-transparent px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-500"
+                    placeholder="Hỏi Erumi"
+                    className="composer-input"
                   />
 
                   {isStreaming ? (
                     <button
                       type="button"
                       onClick={stopStreaming}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/15"
-                      title="Stop generation"
+                      className="composer-send-button"
+                      title="Dừng"
                     >
-                      <Square size={15} />
+                      <Square size={20} fill="currentColor" />
                     </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={!canSubmit}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2583ff] text-white transition hover:bg-[#3a91ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
-                      title="Send"
+                      className="composer-send-button disabled:cursor-not-allowed disabled:opacity-55"
+                      title="Gửi"
                     >
-                      <Send size={16} />
+                      <Send size={26} strokeWidth={1.7} />
                     </button>
                   )}
                 </div>
-              </div>
 
-              <p className="mt-2 text-center text-[11px] text-slate-600">
-                Erumi can make mistakes. Check important information.
-              </p>
-            </form>
+                <p className="mt-2 text-center text-[11px] text-slate-400">
+                  Enter để gửi · Shift + Enter để xuống dòng
+                </p>
+              </form>
+            </div>
           </div>
         </section>
       </div>
