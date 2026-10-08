@@ -35,6 +35,15 @@ if ($NoBuild) {
 
 if ($LASTEXITCODE -ne 0) {
   Write-Host "[ERROR] Docker Compose failed to start." -ForegroundColor Red
+  Write-Host ""
+  Write-Host "Container status:" -ForegroundColor Yellow
+  docker compose ps -a
+  Write-Host ""
+  Write-Host "Postgres logs:" -ForegroundColor Yellow
+  docker compose logs --tail=120 postgres 2>$null
+  Write-Host ""
+  Write-Host "Redis logs:" -ForegroundColor Yellow
+  docker compose logs --tail=120 redis 2>$null
   exit 1
 }
 
