@@ -38,6 +38,7 @@ jobs:
       - run: pip install -r backend/requirements.txt
       - run: python -m compileall -q backend/app
       - run: pytest -q backend/tests
+      - run: cd backend && alembic upgrade head --sql > /tmp/erumi-schema.sql
 
   compose:
     needs: [frontend, backend]
