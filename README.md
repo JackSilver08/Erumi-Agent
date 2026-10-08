@@ -1,56 +1,92 @@
 # Erumi Agent
 
-Erumi is a self-hosted AI Agent platform scaffold based on the project plan in
-`Erumi_Agent_Project_Plan.docx`. This repository is initialized directly in the
-workspace root, with no extra wrapper project folder.
+Erumi (Erudite Mind) is a self-hosted AI Agent platform built for fast chat first and agent capabilities when needed.
 
-## Stack
+## Foundation stack
 
-- Frontend: React, TypeScript, Vite, Tailwind CSS, TanStack Query, Zustand.
-- Backend: FastAPI, Pydantic, SQLAlchemy async, Alembic.
-- Data: PostgreSQL with pgvector, Redis, MinIO.
-- Runtime: Docker Compose first; Kubernetes can come later when scale demands it.
+- Frontend: React + TypeScript + Vite + Tailwind CSS + TanStack Query + Zustand.
+- Backend: FastAPI + Pydantic + SQLAlchemy async + Alembic.
+- Data: PostgreSQL + pgvector, Redis, MinIO.
+- Inference: Ollama for local development; vLLM/provider APIs can be added for production.
+- Realtime: SSE for token streaming and WebSocket for agent events.
+- Runtime: Docker Compose first.
 
-## Local Development
+## Local development
 
-Copy environment defaults:
+Create .env.
 
-```powershell
+PowerShell:
+
+~~~powershell
 Copy-Item .env.example .env
-```
+~~~
 
-Run frontend:
+Linux/macOS:
 
-```powershell
-npm --prefix frontend run dev
-```
+~~~bash
+cp .env.example .env
+~~~
 
-Run backend:
+Start the stack:
 
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-Run the full container stack:
-
-```powershell
-Copy-Item .env.example .env
+~~~bash
 docker compose up --build
-```
+~~~
 
-Frontend is served at `http://localhost:5173` in dev or `http://localhost:8080`
-through Docker. Backend health is available at `http://localhost:8000/health/live`.
+Endpoints:
 
-## Project Layout
+- Web UI: http://localhost:8080
+- API: http://localhost:8000
+- API live: http://localhost:8000/health/live
+- API ready: http://localhost:8000/health/ready
+- OpenAPI: http://localhost:8000/docs
+- Ollama: http://localhost:11434
+- MinIO console: http://localhost:9001
 
-```text
-frontend/          React application
-backend/           FastAPI application, models, routers, worker
-deploy/            nginx and deployment helpers
-docs/              Architecture and roadmap notes
-.github/workflows/ CI/CD workflow skeletons
-```
+Run the first local model:
+
+~~~bash
+docker compose exec ollama ollama pull qwen3:4b
+~~~
+
+Then set:
+
+~~~env
+ERUMI_MOCK_MODEL=false
+ERUMI_OLLAMA_MODEL=qwen3:4b
+~~~
+
+and restart the API:
+
+~~~bash
+docker compose up -d --build api web worker
+~~~
+
+## Database
+
+Run migrations inside the API container:
+
+~~~bash
+docker compose exec api alembic upgrade head
+~~~
+
+## Repository flow
+
+- main: production.
+- develop: integration/staging.
+- feature/*: normal work.
+- fix/*: bug fixes.
+- release/*: optional release freeze.
+
+Required checks are defined in GitHub Actions. Auto-merge should be enabled at repository level and protected branches should require the CI checks before merge.
+
+## CI/CD
+
+- Pull requests to develop or main run frontend, backend, Docker and security checks.
+- Pushes to develop publish staging images to GHCR.
+- Pushes to main publish production images to GHCR.
+- Server deployment is guarded by GitHub Environment variables ERUMI_STAGING_DEPLOY_ENABLED and ERUMI_PRODUCTION_DEPLOY_ENABLED.
+
+## Current scope
+
+This foundation makes the Docker stack, database migration path, realtime channels and real local Ollama streaming path ready. RAG, browser automation, MCP integrations, desktop bridge and the full Agent execution loop remain later roadmap phases.
