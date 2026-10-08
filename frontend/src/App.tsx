@@ -1,5 +1,4 @@
 import {
-  Archive,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -9,7 +8,6 @@ import {
   MessageCircle,
   MessageSquarePlus,
   Plus,
-  Search,
   Send,
   Settings,
   Square,
