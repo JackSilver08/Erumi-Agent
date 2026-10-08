@@ -27,40 +27,25 @@ Linux/macOS:
 cp .env.example .env
 ~~~
 
-Start the stack:
+Start the entire development environment with one command on Windows:
 
-~~~bash
-docker compose up --build
-~~~
+```powershell
+.\run.ps1
+```
 
-Endpoints:
+Or from Command Prompt:
 
-- Web UI: http://localhost:8080
-- API: http://localhost:8000
-- API live: http://localhost:8000/health/live
-- API ready: http://localhost:8000/health/ready
-- OpenAPI: http://localhost:8000/docs
-- Ollama: http://localhost:11434
-- MinIO console: http://localhost:9001
+```cmd
+run.cmd
+```
 
-Run the first local model:
+The runner creates `.env` when needed, builds/starts Docker services, applies Alembic migrations, waits for API/Web health, opens `http://localhost:8080` automatically, and then follows container logs in the terminal.
 
-~~~bash
-docker compose exec ollama ollama pull qwen3:4b
-~~~
+For an already-built stack:
 
-Then set:
-
-~~~env
-ERUMI_MOCK_MODEL=false
-ERUMI_OLLAMA_MODEL=qwen3:4b
-~~~
-
-and restart the API:
-
-~~~bash
-docker compose up -d --build api web worker
-~~~
+```powershell
+.\run.ps1 -NoBuild
+```
 
 ## Database
 
