@@ -1,27 +1,19 @@
 import {
-  Activity,
   Archive,
   Bot,
-  CheckCircle2,
-  Database,
-  FileText,
-  Globe2,
-  History,
-  KeyRound,
   Loader2,
+  Menu,
+  MessageCircle,
   MessageSquarePlus,
-  PauseCircle,
-  Play,
+  Plus,
   Search,
   Send,
   Settings,
-  ShieldCheck,
   Sparkles,
   Square,
-  Upload,
-  Workflow,
+  X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { create } from 'zustand'
 
@@ -63,17 +55,16 @@ const useConversation = create<ConversationState>((set) => ({
   setStreaming: (value) => set({ isStreaming: value }),
 }))
 
-const tools = [
-  { icon: Globe2, name: 'Web research', state: 'read-only' },
-  { icon: Database, name: 'Knowledge base', state: 'indexed' },
-  { icon: FileText, name: 'Files', state: 'workspace' },
-  { icon: Workflow, name: 'Agent runs', state: 'approval' },
-]
-
 function titleForMessage(content: string) {
   const normalized = content.trim().replace(/\s+/g, ' ')
   return normalized.length > 42 ? `${normalized.slice(0, 42)}…` : normalized
 }
+
+const starterPrompts = [
+  'Explain a difficult concept in simple terms',
+  'Research something on the web for me',
+  'Help me plan and complete a task',
+]
 
 function App() {
   const {
@@ -92,21 +83,12 @@ function App() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const initializedRef = useRef(false)
 
   const canSubmit = input.trim().length > 0 && !isStreaming && !loading
-
-  const stats = useMemo(
-    () => [
-      { label: 'TTFT target', value: '< 1.5s' },
-      { label: 'API p95', value: '< 300ms' },
-      { label: 'Tool budget', value: '10-60s' },
-      { label: 'Mode', value: isStreaming ? 'Streaming' : 'Ready' },
-    ],
-    [isStreaming],
-  )
 
   async function selectConversation(id: string) {
     try {
@@ -131,11 +113,12 @@ function App() {
                 : 'completed',
         })),
       )
+      setMobileSidebarOpen(false)
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Unable to load conversation.',
+          : 'Unable to load this conversation.',
       )
     }
   }
@@ -185,13 +168,18 @@ function App() {
       setActiveConversationId(created.id)
       setMessages([])
       setError(null)
+      setMobileSidebarOpen(false)
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Unable to create a conversation.',
+          : 'Unable to create a new chat.',
       )
     }
+  }
+
+  function usePrompt(prompt: string) {
+    setInput(prompt)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -209,6 +197,7 @@ function App() {
       content: prompt,
       status: 'completed',
     })
+
     addMessage({
       id: assistantId,
       role: 'assistant',
@@ -223,6 +212,7 @@ function App() {
           : conversation,
       ),
     )
+
     setInput('')
     setStreaming(true)
     setError(null)
@@ -244,7 +234,7 @@ function App() {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error('Chat API is unavailable.')
+        throw new Error('Erumi could not connect to the chat service.')
       }
 
       const reader = response.body.getReader()
@@ -284,7 +274,7 @@ function App() {
           }
 
           if (payload.type === 'error') {
-            throw new Error(payload.message ?? 'Model generation failed.')
+            throw new Error(payload.message ?? 'Erumi could not generate a response.')
           }
 
           if (payload.type === 'done') {
@@ -296,18 +286,13 @@ function App() {
       await refreshConversations()
     } catch (requestError) {
       if ((requestError as Error).name !== 'AbortError') {
-        updateMessage(
-          assistantId,
+        const message =
           requestError instanceof Error
             ? requestError.message
-            : 'The model did not respond.',
-          'failed',
-        )
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'The model did not respond.',
-        )
+            : 'The model did not respond.'
+
+        updateMessage(assistantId, message, 'failed')
+        setError(message)
       }
     } finally {
       abortRef.current = null
@@ -322,329 +307,274 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8f4] text-[#18211f]">
-      <div className="flex min-h-screen">
-        <aside className="hidden w-72 shrink-0 border-r border-[#d8ddd0] bg-[#eef2e8] xl:block">
-          <div className="flex h-full flex-col">
-            <div className="flex items-center gap-3 border-b border-[#d8ddd0] px-5 py-4">
+    <main className="min-h-screen bg-[#07101f] text-white">
+      <div className="flex min-h-screen overflow-hidden">
+        <div
+          className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity lg:hidden ${
+            mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col border-r border-white/8 bg-[#091426] transition-transform duration-200 lg:static lg:translate-x-0 ${
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
+            <div className="flex min-w-0 items-center gap-3">
               <img
                 src="/erumi-chatbot.png"
                 alt="Erumi"
-                className="h-11 w-11 rounded-md object-cover"
+                className="h-9 w-9 rounded-xl border border-white/10 object-cover shadow-[0_0_24px_rgba(45,128,255,0.16)]"
               />
-              <div>
-                <p className="text-sm font-semibold">Erumi Agent</p>
-                <p className="text-xs text-[#65706b]">Erudite Mind</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-tight">Erumi</p>
+                <p className="text-[11px] text-slate-400">Erudite Mind</p>
               </div>
             </div>
 
-            <div className="px-4 py-4">
-              <button
-                type="button"
-                onClick={() => void handleNewChat()}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1f6f64] px-3 text-sm font-semibold text-white shadow-sm hover:bg-[#18574f]"
-              >
-                <MessageSquarePlus size={17} />
-                New chat
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-white/6 hover:text-white lg:hidden"
+              aria-label="Close sidebar"
+            >
+              <X size={18} />
+            </button>
+          </div>
 
-            <div className="px-4">
-              <div className="flex h-10 items-center gap-2 rounded-md border border-[#d8ddd0] bg-white px-3 text-sm text-[#65706b]">
-                <Search size={16} />
-                <span>Search history</span>
-              </div>
-            </div>
+          <div className="p-4">
+            <button
+              type="button"
+              onClick={() => void handleNewChat()}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#2583ff] px-4 text-sm font-semibold text-white shadow-[0_8px_26px_rgba(37,131,255,0.22)] transition hover:bg-[#3a91ff]"
+            >
+              <MessageSquarePlus size={17} />
+              New chat
+            </button>
+          </div>
 
-            <nav className="mt-4 flex-1 space-y-1 overflow-y-auto px-3">
-              {conversations.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => void selectConversation(item.id)}
-                  className={`w-full rounded-md px-3 py-2 text-left ${
-                    item.id === activeConversationId
-                      ? 'bg-white ring-1 ring-[#cfd7ca]'
-                      : 'hover:bg-white'
-                  }`}
-                >
-                  <span className="block truncate text-sm font-medium">
-                    {item.title}
-                  </span>
-                  <span className="text-xs text-[#65706b]">
-                    {new Date(item.updated_at ?? item.created_at).toLocaleString()}
-                  </span>
-                </button>
-              ))}
-            </nav>
-
-            <div className="border-t border-[#d8ddd0] p-3">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-[#65706b] hover:bg-white"
-              >
-                <Archive size={16} />
-                Archived chats
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-[#65706b] hover:bg-white"
-              >
-                <Settings size={16} />
-                Settings
-              </button>
+          <div className="px-4">
+            <div className="flex h-10 items-center gap-2 rounded-xl border border-white/8 bg-white/[0.035] px-3 text-sm text-slate-400">
+              <Search size={16} />
+              <span>Search chats</span>
             </div>
+          </div>
+
+          <div className="px-4 pb-2 pt-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Recent
+            </p>
+          </div>
+
+          <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            <div className="space-y-1">
+              {conversations.map((item) => {
+                const active = item.id === activeConversationId
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void selectConversation(item.id)}
+                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                      active
+                        ? 'bg-white/[0.08] text-white ring-1 ring-white/8'
+                        : 'text-slate-300 hover:bg-white/[0.04] hover:text-white'
+                    }`}
+                  >
+                    <MessageCircle
+                      size={16}
+                      className={active ? 'text-[#55a2ff]' : 'text-slate-500'}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {item.title}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </nav>
+
+          <div className="border-t border-white/8 p-3">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+            >
+              <Archive size={16} />
+              Archived chats
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+            >
+              <Settings size={16} />
+              Settings
+            </button>
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-16 items-center justify-between border-b border-[#d8ddd0] bg-white px-4 md:px-6">
+        <section className="flex min-w-0 flex-1 flex-col bg-[#07101f]">
+          <header className="flex h-16 items-center justify-between border-b border-white/8 px-4 md:px-6">
             <div className="flex items-center gap-3">
-              <Bot className="text-[#1f6f64]" size={24} />
-              <div>
-                <h1 className="text-base font-semibold">Agent Console</h1>
-                <p className="text-xs text-[#65706b]">
-                  Fast chat, persistent conversations, approval-ready workflow
-                </p>
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="rounded-lg p-2 text-slate-300 transition hover:bg-white/[0.05] hover:text-white lg:hidden"
+                aria-label="Open sidebar"
+              >
+                <Menu size={19} />
+              </button>
+
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#45d483] opacity-30" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#45d483]" />
+                </span>
+                <span className="text-sm font-medium text-slate-200">Erumi</span>
+                <span className="hidden text-xs text-slate-500 sm:inline">
+                  Your AI workspace
+                </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="hidden h-9 items-center gap-2 rounded-md border border-[#d8ddd0] bg-white px-3 text-sm hover:bg-[#f7f8f4] md:flex"
-                title="Upload file"
-              >
-                <Upload size={16} />
-                Upload
-              </button>
-              <button
-                type="button"
-                className="h-9 w-9 rounded-md border border-[#d8ddd0] bg-white text-[#65706b] hover:bg-[#f7f8f4]"
-                title="Security"
-              >
-                <ShieldCheck className="mx-auto" size={17} />
-              </button>
-            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleNewChat()}
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-200 transition hover:bg-white/[0.07]"
+            >
+              <Plus size={16} />
+              <span className="hidden sm:inline">New chat</span>
+            </button>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex min-h-0 flex-col">
-              <div className="grid grid-cols-2 gap-2 border-b border-[#d8ddd0] bg-[#fbfcf9] p-3 md:grid-cols-4">
-                {stats.map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="rounded-md border border-[#d8ddd0] bg-white px-3 py-2"
-                  >
-                    <p className="text-[11px] uppercase text-[#65706b]">
-                      {stat.label}
-                    </p>
-                    <p className="text-sm font-semibold">{stat.value}</p>
-                  </div>
-                ))}
-              </div>
+          {error && (
+            <div className="border-b border-red-400/15 bg-red-500/[0.07] px-4 py-3 text-sm text-red-200 md:px-8">
+              {error}
+            </div>
+          )}
 
-              {error && (
-                <div className="border-b border-[#e5c2c2] bg-[#fff5f5] px-4 py-3 text-sm text-[#7c2d2d] md:px-8">
-                  {error}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto flex min-h-full max-w-3xl flex-col">
+              {loading ? (
+                <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
+                  <Loader2 className="mr-2 animate-spin" size={17} />
+                  Starting Erumi…
                 </div>
-              )}
+              ) : messages.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#2583ff]/20 bg-[#2583ff]/10 shadow-[0_0_48px_rgba(37,131,255,0.12)]">
+                    <Sparkles className="text-[#55a2ff]" size={28} />
+                  </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-8">
-                <div className="mx-auto max-w-4xl space-y-4">
-                  {loading ? (
-                    <div className="flex items-center justify-center py-16 text-sm text-[#65706b]">
-                      <Loader2 className="mr-2 animate-spin" size={16} />
-                      Starting Erumi…
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-[#cfd7ca] bg-white p-8 text-center">
-                      <Sparkles
-                        className="mx-auto mb-3 text-[#1f6f64]"
-                        size={28}
-                      />
-                      <p className="font-semibold">Start a conversation</p>
-                      <p className="mt-1 text-sm text-[#65706b]">
-                        Ask Erumi a question and the answer will be saved to this chat.
-                      </p>
-                    </div>
-                  ) : (
-                    messages.map((message) => (
-                      <article
-                        key={message.id}
-                        className={`flex gap-3 ${
-                          message.role === 'user' ? 'justify-end' : ''
+                  <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
+                    What can I help you with?
+                  </h1>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400 md:text-base">
+                    Ask a question, research a topic, work through a problem, or describe
+                    something you want done.
+                  </p>
+
+                  <div className="mt-8 grid w-full gap-3 sm:grid-cols-3">
+                    {starterPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => usePrompt(prompt)}
+                        className="rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-4 text-left text-sm leading-5 text-slate-300 transition hover:-translate-y-0.5 hover:border-[#2583ff]/40 hover:bg-[#2583ff]/[0.07] hover:text-white"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-7 pb-8">
+                  {messages.map((message) => (
+                    <article
+                      key={message.id}
+                      className={`flex gap-3 ${
+                        message.role === 'user' ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      {message.role !== 'user' && (
+                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#2583ff]/10 text-[#55a2ff]">
+                          <Bot size={17} />
+                        </div>
+                      )}
+
+                      <div
+                        className={`max-w-[min(760px,86%)] rounded-2xl px-4 py-3.5 text-sm leading-7 ${
+                          message.role === 'user'
+                            ? 'bg-[#2583ff] text-white shadow-[0_8px_28px_rgba(37,131,255,0.16)]'
+                            : message.status === 'failed'
+                              ? 'border border-red-400/15 bg-red-500/[0.07] text-red-100'
+                              : 'text-slate-200'
                         }`}
                       >
-                        {message.role !== 'user' && (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#dfe9e4] text-[#1f6f64]">
-                            {message.role === 'system' ? (
-                              <Sparkles size={18} />
-                            ) : (
-                              <Bot size={18} />
-                            )}
-                          </div>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+
+                        {message.status === 'streaming' && (
+                          <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500">
+                            <Loader2 className="animate-spin" size={12} />
+                            Thinking
+                          </span>
                         )}
-
-                        <div
-                          className={`max-w-[78ch] rounded-md border px-4 py-3 text-sm leading-6 ${
-                            message.role === 'user'
-                              ? 'border-[#1f6f64] bg-[#1f6f64] text-white'
-                              : message.status === 'failed'
-                                ? 'border-[#e5c2c2] bg-[#fff5f5] text-[#7c2d2d]'
-                                : 'border-[#d8ddd0] bg-white'
-                          }`}
-                        >
-                          <p className="whitespace-pre-wrap">
-                            {message.content ||
-                              (message.status === 'streaming'
-                                ? 'Thinking…'
-                                : '')}
-                          </p>
-
-                          {message.status === 'streaming' && (
-                            <span className="mt-2 inline-flex items-center gap-2 text-xs text-[#65706b]">
-                              <Loader2 className="animate-spin" size={13} />
-                              streaming
-                            </span>
-                          )}
-                        </div>
-                      </article>
-                    ))
-                  )}
+                      </div>
+                    </article>
+                  ))}
                 </div>
-              </div>
+              )}
+            </div>
+          </div>
 
-              <form
-                onSubmit={handleSubmit}
-                className="border-t border-[#d8ddd0] bg-white p-3 md:p-4"
-              >
-                <div className="mx-auto flex max-w-4xl items-end gap-2 rounded-md border border-[#cfd7ca] bg-[#fbfcf9] p-2">
+          <div className="px-4 pb-4 pt-2 md:px-8 md:pb-6">
+            <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
+              <div className="rounded-2xl border border-white/10 bg-[#0b1628] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.22)] focus-within:border-[#2583ff]/45 focus-within:shadow-[0_0_0_4px_rgba(37,131,255,0.08)]">
+                <div className="flex items-end gap-2">
                   <textarea
                     value={input}
                     onChange={(event) => setInput(event.target.value)}
-                    rows={2}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        event.currentTarget.form?.requestSubmit()
+                      }
+                    }}
+                    rows={1}
                     disabled={loading || !activeConversationId}
-                    placeholder="Ask Erumi to answer, research, summarize, or prepare an action…"
-                    className="min-h-12 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[#7b8580]"
+                    placeholder="Message Erumi…"
+                    className="max-h-40 min-h-12 flex-1 resize-none bg-transparent px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-500"
                   />
 
                   {isStreaming ? (
                     <button
                       type="button"
                       onClick={stopStreaming}
-                      className="flex h-10 w-10 items-center justify-center rounded-md bg-[#7c2d2d] text-white hover:bg-[#642424]"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/15"
                       title="Stop generation"
                     >
-                      <Square size={16} />
+                      <Square size={15} />
                     </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={!canSubmit}
-                      className="flex h-10 w-10 items-center justify-center rounded-md bg-[#1f6f64] text-white hover:bg-[#18574f] disabled:cursor-not-allowed disabled:bg-[#9aa6a0]"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2583ff] text-white transition hover:bg-[#3a91ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
                       title="Send"
                     >
                       <Send size={16} />
                     </button>
                   )}
                 </div>
-              </form>
-            </div>
-
-            <aside className="hidden border-l border-[#d8ddd0] bg-[#fbfcf9] lg:block">
-              <div className="space-y-5 p-4">
-                <section>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold">Tool Layer</h2>
-                    <span className="rounded-md bg-[#f0d78c] px-2 py-1 text-xs font-medium">
-                      foundation
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {tools.map((tool) => (
-                      <div
-                        key={tool.name}
-                        className="flex items-center gap-3 rounded-md border border-[#d8ddd0] bg-white px-3 py-3"
-                      >
-                        <tool.icon className="text-[#1f6f64]" size={18} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {tool.name}
-                          </p>
-                          <p className="text-xs text-[#65706b]">{tool.state}</p>
-                        </div>
-                        <CheckCircle2 className="text-[#4f7f38]" size={16} />
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center gap-2">
-                    <Activity className="text-[#8a5c13]" size={17} />
-                    <h2 className="text-sm font-semibold">Run Events</h2>
-                  </div>
-                  <ol className="space-y-2">
-                    <li className="flex gap-3 rounded-md border border-[#d8ddd0] bg-white px-3 py-3 text-sm">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#eef2e8] text-xs font-semibold text-[#65706b]">
-                        1
-                      </span>
-                      <span>Conversation loaded from PostgreSQL</span>
-                    </li>
-                    <li className="flex gap-3 rounded-md border border-[#d8ddd0] bg-white px-3 py-3 text-sm">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#eef2e8] text-xs font-semibold text-[#65706b]">
-                        2
-                      </span>
-                      <span>SSE stream opens when generation starts</span>
-                    </li>
-                    <li className="flex gap-3 rounded-md border border-[#d8ddd0] bg-white px-3 py-3 text-sm">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#eef2e8] text-xs font-semibold text-[#65706b]">
-                        3
-                      </span>
-                      <span>Assistant response is persisted on completion</span>
-                    </li>
-                  </ol>
-                </section>
-
-                <section className="rounded-md border border-[#d8ddd0] bg-white p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <KeyRound className="text-[#1f6f64]" size={17} />
-                    <h2 className="text-sm font-semibold">Approval Gate</h2>
-                  </div>
-                  <p className="text-sm leading-6 text-[#65706b]">
-                    Side-effect tools will pause in waiting_approval before execution.
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled
-                      className="flex h-9 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#cfd7ca] text-sm font-medium text-[#65706b]"
-                    >
-                      <Play size={15} />
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled
-                      className="flex h-9 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-[#d8ddd0] bg-white text-sm font-medium text-[#65706b]"
-                    >
-                      <PauseCircle size={15} />
-                      Hold
-                    </button>
-                  </div>
-                </section>
-
-                <section className="rounded-md border border-[#d8ddd0] bg-white p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <History className="text-[#1f6f64]" size={17} />
-                    <h2 className="text-sm font-semibold">Audit Trail</h2>
-                  </div>
-                  <p className="text-sm leading-6 text-[#65706b]">
-                    Conversation and message records now have a persistent PostgreSQL home.
-                  </p>
-                </section>
               </div>
-            </aside>
+
+              <p className="mt-2 text-center text-[11px] text-slate-600">
+                Erumi can make mistakes. Check important information.
+              </p>
+            </form>
           </div>
         </section>
       </div>
