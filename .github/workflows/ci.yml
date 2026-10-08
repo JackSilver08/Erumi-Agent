@@ -35,10 +35,14 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip
-      - run: pip install -r backend/requirements.txt
-      - run: python -m compileall -q backend/app
-      - run: pytest -q backend/tests
-      - run: cd backend && alembic upgrade head --sql > /tmp/erumi-schema.sql
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - run: python -m compileall -q app
+        working-directory: backend
+      - run: pytest -q
+        working-directory: backend
+      - run: alembic upgrade head --sql > /tmp/erumi-schema.sql
+        working-directory: backend
 
   compose:
     needs: [frontend, backend]
@@ -76,6 +80,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m pip install -r requirements.txt
+        working-directory: backend
       - name: Python dependency consistency
         run: python -m pip check
